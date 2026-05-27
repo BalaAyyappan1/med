@@ -125,7 +125,7 @@ class _RecordButtonState extends State<RecordButton> with SingleTickerProviderSt
               ),
               boxShadow: [
                 BoxShadow(
-                  color: accentColor.withOpacity(0.4),
+                  color: accentColor.withValues(alpha: 0.4),
                   blurRadius: widget.isRecording ? 25 : 15,
                   spreadRadius: widget.isRecording ? 5 : 2,
                   offset: const Offset(0, 4),

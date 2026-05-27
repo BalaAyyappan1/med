@@ -3,9 +3,7 @@ import 'package:dio/dio.dart';
 import 'dart:io' show Platform;
 
 class ApiClient {
-  // IMPORTANT: If running on a physical Android/iOS device, change this to your 
-  // computer's local Wi-Fi IP address (e.g., '192.168.1.5'). Keep it '10.0.2.2' for emulator.
-  static const String computerIp = '10.120.232.74'; 
+  static const String computerIp = '192.168.1.5'; 
 
   late final Dio _dio;
 
