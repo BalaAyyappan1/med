@@ -74,71 +74,75 @@ class _RecordButtonState extends State<RecordButton> with SingleTickerProviderSt
     return GestureDetector(
       onTap: widget.onTap,
       behavior: HitTestBehavior.opaque,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Glowing Pulse Rings
-          if (widget.isRecording) ...[
-            AnimatedBuilder(
-              animation: _animationController,
-              builder: (context, child) {
-                return Container(
-                  width: 90 * _scaleAnimation.value,
-                  height: 90 * _scaleAnimation.value,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: accentColor.withOpacity(_opacityAnimation.value),
-                      width: 2,
+      child: SizedBox(
+        width: 165,
+        height: 165,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Glowing Pulse Rings
+            if (widget.isRecording) ...[
+              AnimatedBuilder(
+                animation: _animationController,
+                builder: (context, child) {
+                  return Container(
+                    width: 90 * _scaleAnimation.value,
+                    height: 90 * _scaleAnimation.value,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: accentColor.withValues(alpha: _opacityAnimation.value),
+                        width: 2,
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
-            AnimatedBuilder(
-              animation: _animationController,
-              builder: (context, child) {
-                return Container(
-                  width: 110 * _scaleAnimation.value,
-                  height: 110 * _scaleAnimation.value,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: accentColor.withOpacity(_opacityAnimation.value * 0.5),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
+              AnimatedBuilder(
+                animation: _animationController,
+                builder: (context, child) {
+                  return Container(
+                    width: 110 * _scaleAnimation.value,
+                    height: 110 * _scaleAnimation.value,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: accentColor.withValues(alpha: _opacityAnimation.value * 0.5),
+                    ),
+                  );
+                },
+              ),
+            ],
+            // Main Button Container
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              width: 90,
+              height: 90,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: widget.isRecording
+                      ? [const Color(0xFFF87171), const Color(0xFFEF4444)] // Light to dark red
+                      : [const Color(0xFF818CF8), const Color(0xFF6366F1)], // Light to dark indigo
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: accentColor.withValues(alpha: 0.4),
+                    blurRadius: widget.isRecording ? 25 : 15,
+                    spreadRadius: widget.isRecording ? 5 : 2,
+                    offset: const Offset(0, 4),
+                  )
+                ],
+              ),
+              child: Icon(
+                widget.isRecording ? Icons.stop_rounded : Icons.mic_none_rounded,
+                color: Colors.white,
+                size: 40,
+              ),
             ),
           ],
-          // Main Button Container
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            width: 90,
-            height: 90,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                colors: widget.isRecording
-                    ? [const Color(0xFFF87171), const Color(0xFFEF4444)] // Light to dark red
-                    : [const Color(0xFF818CF8), const Color(0xFF6366F1)], // Light to dark indigo
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: accentColor.withValues(alpha: 0.4),
-                  blurRadius: widget.isRecording ? 25 : 15,
-                  spreadRadius: widget.isRecording ? 5 : 2,
-                  offset: const Offset(0, 4),
-                )
-              ],
-            ),
-            child: Icon(
-              widget.isRecording ? Icons.stop_rounded : Icons.mic_none_rounded,
-              color: Colors.white,
-              size: 40,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

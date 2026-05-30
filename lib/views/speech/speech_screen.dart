@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -128,7 +129,7 @@ class _SpeechScreenState extends State<SpeechScreen> {
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF6366F1).withOpacity(0.05),
+            color: const Color(0xFF6366F1).withValues(alpha: 0.05),
             blurRadius: 30,
             spreadRadius: 5,
           )
@@ -137,69 +138,83 @@ class _SpeechScreenState extends State<SpeechScreen> {
       child: Column(
         children: [
           // Action Label / Recording Status
-          if (controller.isRecording) ...[
-            const Text(
-              'RECORDING AUDIO',
-              style: TextStyle(
-                color: Color(0xFFEF4444),
-                fontWeight: FontWeight.w900,
-                fontSize: 12,
-                letterSpacing: 2.0,
+          // Fixed height container for top status section to avoid height shifts
+          SizedBox(
+            height: 64,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (controller.isRecording) ...[
+                    const Text(
+                      'RECORDING AUDIO',
+                      style: TextStyle(
+                        color: Color(0xFFEF4444),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12,
+                        letterSpacing: 2.0,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      controller.formattedDuration,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w300,
+                        fontSize: 28,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ] else if (controller.isTranscribing) ...[
+                    const Text(
+                      'TRANSCRIBING',
+                      style: TextStyle(
+                        color: Color(0xFFF59E0B), // Amber-500
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12,
+                        letterSpacing: 2.0,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: CircularProgressIndicator(
+                        color: Color(0xFFF59E0B),
+                        strokeWidth: 2.5,
+                      ),
+                    ),
+                  ] else ...[
+                    const Text(
+                      'TAP MIC TO RECORD',
+                      style: TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12,
+                        letterSpacing: 2.0,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Ready for speech to text',
+                      style: TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              controller.formattedDuration,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w300,
-                fontSize: 32,
-                fontFamily: 'monospace',
-              ),
-            ),
-          ] else if (controller.isTranscribing) ...[
-            const Text(
-              'TRANSCRIBING',
-              style: TextStyle(
-                color: Color(0xFFF59E0B), // Amber-500
-                fontWeight: FontWeight.w900,
-                fontSize: 12,
-                letterSpacing: 2.0,
-              ),
-            ),
-            const SizedBox(height: 12),
-            const SizedBox(
-              height: 28,
-              width: 28,
-              child: CircularProgressIndicator(
-                color: Color(0xFFF59E0B),
-                strokeWidth: 2.5,
-              ),
-            ),
-          ] else ...[
-            const Text(
-              'TAP MIC TO RECORD',
-              style: TextStyle(
-                color: Color(0xFF94A3B8),
-                fontWeight: FontWeight.w900,
-                fontSize: 12,
-                letterSpacing: 2.0,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Ready for speech to text',
-              style: TextStyle(
-                color: Color(0xFF64748B),
-                fontSize: 14,
-              ),
-            ),
-          ],
+          ),
 
           const SizedBox(height: 24),
 
-          // Sound Wave Micro-Animation
-          SoundWaveIndicator(isRecording: controller.isRecording),
+          // Sound Wave Micro-Animation (connected to real-time voice amplitude)
+          SoundWaveIndicator(
+            isRecording: controller.isRecording,
+            volumeStream: controller.volumeStream,
+          ),
 
           const SizedBox(height: 28),
 
@@ -215,17 +230,21 @@ class _SpeechScreenState extends State<SpeechScreen> {
             },
           ),
           
-          if (controller.isTranscribing) ...[
-            const SizedBox(height: 16),
-            const Text(
-              'Whisper is processing your audio...',
-              style: TextStyle(
-                color: Color(0xFF94A3B8),
-                fontSize: 13,
-                fontStyle: FontStyle.italic,
+          // Fixed slot for transcribing text to prevent the main card from jumping or resizing
+          Opacity(
+            opacity: controller.isTranscribing ? 1.0 : 0.0,
+            child: const Padding(
+              padding: EdgeInsets.only(top: 16),
+              child: Text(
+                'Whisper is processing your audio...',
+                style: TextStyle(
+                  color: Color(0xFF94A3B8),
+                  fontSize: 13,
+                  fontStyle: FontStyle.italic,
+                ),
               ),
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -288,7 +307,13 @@ class _SpeechScreenState extends State<SpeechScreen> {
 
 class SoundWaveIndicator extends StatefulWidget {
   final bool isRecording;
-  const SoundWaveIndicator({super.key, required this.isRecording});
+  final Stream<double> volumeStream;
+
+  const SoundWaveIndicator({
+    super.key,
+    required this.isRecording,
+    required this.volumeStream,
+  });
 
   @override
   State<SoundWaveIndicator> createState() => _SoundWaveIndicatorState();
@@ -296,71 +321,103 @@ class SoundWaveIndicator extends StatefulWidget {
 
 class _SoundWaveIndicatorState extends State<SoundWaveIndicator>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+  // Drives the wave SHAPE — always looping when recording.
+  late AnimationController _waveController;
+  // Drives the wave SCALE from the real microphone amplitude.
+  double _amplitude = 0.0;
+  StreamSubscription<double>? _sub;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 1200),
+    _waveController = AnimationController(
       vsync: this,
+      duration: const Duration(milliseconds: 1000),
     );
-    if (widget.isRecording) {
-      _controller.repeat();
-    }
+    if (widget.isRecording) _waveController.repeat();
+    _listenToVolume();
   }
 
   @override
   void didUpdateWidget(covariant SoundWaveIndicator oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.isRecording != oldWidget.isRecording) {
-      if (widget.isRecording) {
-        _controller.repeat();
-      } else {
-        _controller.stop();
-      }
+
+    // Start/stop the wave animation controller.
+    if (widget.isRecording && !oldWidget.isRecording) {
+      _waveController.repeat();
+    } else if (!widget.isRecording && oldWidget.isRecording) {
+      _waveController.stop();
+      _waveController.reset();
+      // Collapse amplitude immediately.
+      setState(() => _amplitude = 0.0);
     }
+
+    // Re-subscribe if the stream reference changes.
+    if (widget.volumeStream != oldWidget.volumeStream) {
+      _sub?.cancel();
+      _listenToVolume();
+    }
+  }
+
+  void _listenToVolume() {
+    _sub = widget.volumeStream.listen((vol) {
+      if (!mounted) return;
+      setState(() => _amplitude = vol);
+    });
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _sub?.cancel();
+    _waveController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(9, (index) {
-            double value = 4.0;
-            if (widget.isRecording) {
-              // Formula creates a staggered sine wave for organic feel
-              final double waveVal = math.sin((_controller.value * 2 * math.pi) + (index * 0.7));
-              value = (waveVal.abs() * 32.0) + 6.0;
-            }
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 100),
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              width: 5,
-              height: value,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: widget.isRecording
-                      ? [const Color(0xFF818CF8), const Color(0xFF6366F1)]
-                      : [const Color(0xFF475569), const Color(0xFF475569)],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
+    return SizedBox(
+      height: 48,
+      child: AnimatedBuilder(
+        animation: _waveController,
+        builder: (_, __) {
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: List.generate(9, (i) {
+              double barHeight;
+              if (widget.isRecording) {
+                // Each bar uses its own sine phase so bars look like a wave.
+                // Idle amplitude (0.12) ensures bars always breathe slightly.
+                final double phase =
+                    (_waveController.value * 2 * 3.1415926) + (i * 0.75);
+                final double sine = (math.sin(phase) + 1) / 2; // 0.0 – 1.0
+                final double effectiveAmp = 0.12 + (_amplitude * 0.88);
+                barHeight = (effectiveAmp * 40.0 * sine) + 4.0;
+              } else {
+                barHeight = 4.0;
+              }
+
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 60),
+                curve: Curves.easeOut,
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                width: 5,
+                height: barHeight.clamp(4.0, 48.0),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: widget.isRecording
+                        ? [const Color(0xFFA5B4FC), const Color(0xFF6366F1)]
+                        : [const Color(0xFF334155), const Color(0xFF334155)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  borderRadius: BorderRadius.circular(3),
                 ),
-                borderRadius: BorderRadius.circular(3),
-              ),
-            );
-          }),
-        );
-      },
+              );
+            }),
+          );
+        },
+      ),
     );
   }
 }

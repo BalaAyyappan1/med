@@ -15,11 +15,16 @@ class SpeechController extends ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
   int _recordDuration = 0;
-  Timer? _timer;
+  Timer? _secondsTimer;
+  Timer? _amplitudeTimer;
+
+  // Broadcast stream: every subscriber always gets the latest amplitude events.
+  final StreamController<double> _volumeStreamController =
+      StreamController<double>.broadcast();
 
   SpeechController(this._speechService);
 
-  // Getters
+  // ── Getters ──────────────────────────────────────────────────────────────
   List<TranscriptionModel> get transcriptions => _transcriptions;
   bool get isRecording => _isRecording;
   bool get isTranscribing => _isTranscribing;
@@ -27,12 +32,14 @@ class SpeechController extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   int get recordDuration => _recordDuration;
 
-  /// Loads previous transcriptions from the backend database.
+  /// Normalized volume stream [0.0 – 1.0].
+  Stream<double> get volumeStream => _volumeStreamController.stream;
+
+  // ── Transcription history ─────────────────────────────────────────────────
   Future<void> loadTranscriptions() async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
-
     try {
       _transcriptions = await _speechService.getTranscriptions();
     } catch (e) {
@@ -44,86 +51,119 @@ class SpeechController extends ChangeNotifier {
     }
   }
 
-  /// Starts recording audio.
+  // ── Recording ─────────────────────────────────────────────────────────────
   Future<void> startRecording() async {
     try {
       _errorMessage = null;
-      
-      // Request and verify microphone permissions
+
       if (await _audioRecorder.hasPermission()) {
         String? filePath;
-        
-        // Only run path_provider on mobile/desktop. On Web, record to memory/blob.
         if (!kIsWeb) {
           final tempDir = await getTemporaryDirectory();
-          filePath = '${tempDir.path}/rec_${DateTime.now().millisecondsSinceEpoch}.m4a';
+          filePath =
+              '${tempDir.path}/rec_${DateTime.now().millisecondsSinceEpoch}.m4a';
         }
 
-        // Configure recording parameters (standard AAC format)
         const config = RecordConfig(
           encoder: AudioEncoder.aacLc,
           sampleRate: 44100,
           numChannels: 1,
         );
 
-        // Start recording
         await _audioRecorder.start(config, path: filePath ?? '');
-        
+
         _isRecording = true;
         _recordDuration = 0;
-        
-        // Start seconds counter timer
-        _timer?.cancel();
-        _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+
+        // ── Seconds counter ───────────────────────────────────────────────
+        _secondsTimer?.cancel();
+        _secondsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
           _recordDuration++;
           notifyListeners();
         });
 
+        // ── Amplitude polling (100ms) ─────────────────────────────────────
+        // Timer-based polling is more reliable cross-platform than
+        // onAmplitudeChanged which can be silent on some Windows configurations.
+        _amplitudeTimer?.cancel();
+        _amplitudeTimer =
+            Timer.periodic(const Duration(milliseconds: 100), (_) async {
+          if (!_isRecording) return;
+          try {
+            final amp = await _audioRecorder.getAmplitude();
+            final double raw = amp.current; // dBFS, typically -160..0
+
+            // Wide window: -80 dB silence floor → 0 dB ceiling.
+            const double floor = -80.0;
+            const double ceiling = 0.0;
+            double normalized = 0.0;
+            if (raw > floor) {
+              normalized = (raw - floor) / (ceiling - floor);
+              normalized = normalized.clamp(0.0, 1.0);
+            }
+
+            // Apply sqrt curve so quieter sounds are still visible.
+            final double boosted = normalized <= 0 ? 0.0 : normalized;
+
+            debugPrint(
+                '[Amp] raw=${raw.toStringAsFixed(1)} dB  norm=${normalized.toStringAsFixed(2)}  boosted=${boosted.toStringAsFixed(2)}');
+
+            if (!_volumeStreamController.isClosed) {
+              _volumeStreamController.add(boosted);
+            }
+          } catch (e) {
+            debugPrint('Amplitude error: $e');
+          }
+        });
+
         notifyListeners();
       } else {
-        _errorMessage = "Microphone permission is required to record audio.";
+        _errorMessage = 'Microphone permission is required to record audio.';
         notifyListeners();
       }
     } catch (e) {
-      _errorMessage = "Failed to start recording: ${e.toString()}";
+      _errorMessage = 'Failed to start recording: ${e.toString()}';
       _isRecording = false;
-      _timer?.cancel();
+      _secondsTimer?.cancel();
+      _amplitudeTimer?.cancel();
       notifyListeners();
     }
   }
 
-  /// Stops recording audio and automatically triggers file upload to backend.
   Future<void> stopRecording() async {
     if (!_isRecording) return;
 
-    _timer?.cancel();
+    _secondsTimer?.cancel();
+    _amplitudeTimer?.cancel();
     _isRecording = false;
     _isTranscribing = true;
+
+    // Signal zero so the waveform collapses.
+    if (!_volumeStreamController.isClosed) {
+      _volumeStreamController.add(0.0);
+    }
+
     notifyListeners();
 
     try {
       final path = await _audioRecorder.stop();
       if (path != null) {
-        debugPrint('Recording stopped. File saved to or Blob URL: $path');
-        
+        debugPrint('Recording saved to: $path');
         TranscriptionModel newTranscription;
-        
-        // Handle web uploads differently (Blobs) than mobile files
         if (kIsWeb) {
           final bytes = await _speechService.fetchBlobBytes(path);
-          newTranscription = await _speechService.uploadAudioBytes(bytes, filename: 'audio.m4a');
+          newTranscription =
+              await _speechService.uploadAudioBytes(bytes, filename: 'audio.m4a');
         } else {
           newTranscription = await _speechService.uploadAudio(path);
         }
-        
-        // Add to the top of our local list
         _transcriptions.insert(0, newTranscription);
       } else {
-        _errorMessage = "No audio file recorded.";
+        _errorMessage = 'No audio file recorded.';
       }
     } catch (e) {
       _errorMessage = e.toString();
-      debugPrint('Error during transcription process: $e');
+      debugPrint('Transcription error: $e');
     } finally {
       _isTranscribing = false;
       _recordDuration = 0;
@@ -131,14 +171,13 @@ class SpeechController extends ChangeNotifier {
     }
   }
 
-  /// Helper to format the record duration into MM:SS format.
+  // ── Helpers ───────────────────────────────────────────────────────────────
   String get formattedDuration {
-    final minutes = (_recordDuration ~/ 60).toString().padLeft(2, '0');
-    final seconds = (_recordDuration % 60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
+    final m = (_recordDuration ~/ 60).toString().padLeft(2, '0');
+    final s = (_recordDuration % 60).toString().padLeft(2, '0');
+    return '$m:$s';
   }
 
-  /// Clear error message
   void clearError() {
     _errorMessage = null;
     notifyListeners();
@@ -146,7 +185,9 @@ class SpeechController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _secondsTimer?.cancel();
+    _amplitudeTimer?.cancel();
+    _volumeStreamController.close();
     _audioRecorder.dispose();
     super.dispose();
   }
