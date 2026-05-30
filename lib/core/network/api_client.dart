@@ -8,7 +8,6 @@ class ApiClient {
   late final Dio _dio;
 
   ApiClient() {
-    // Default base URL for web and desktop
     String baseUrl = 'http://localhost:3000/api';
     
     // Dynamic override for Android
