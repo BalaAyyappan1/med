@@ -24,7 +24,7 @@ class SpeechController extends ChangeNotifier {
 
   SpeechController(this._speechService);
 
-  // ── Getters ──────────────────────────────────────────────────────────────
+  // ── Getters 
   List<TranscriptionModel> get transcriptions => _transcriptions;
   bool get isRecording => _isRecording;
   bool get isTranscribing => _isTranscribing;
@@ -35,7 +35,7 @@ class SpeechController extends ChangeNotifier {
   /// Normalized volume stream [0.0 – 1.0].
   Stream<double> get volumeStream => _volumeStreamController.stream;
 
-  // ── Transcription history ─────────────────────────────────────────────────
+  // ── Transcription history
   Future<void> loadTranscriptions() async {
     _isLoading = true;
     _errorMessage = null;
@@ -51,7 +51,7 @@ class SpeechController extends ChangeNotifier {
     }
   }
 
-  // ── Recording ─────────────────────────────────────────────────────────────
+  // ── Recording
   Future<void> startRecording() async {
     try {
       _errorMessage = null;
@@ -75,14 +75,14 @@ class SpeechController extends ChangeNotifier {
         _isRecording = true;
         _recordDuration = 0;
 
-        // ── Seconds counter ───────────────────────────────────────────────
+        // ── Seconds counter
         _secondsTimer?.cancel();
         _secondsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
           _recordDuration++;
           notifyListeners();
         });
 
-        // ── Amplitude polling (100ms) ─────────────────────────────────────
+        // ── Amplitude polling (100ms)
         // Timer-based polling is more reliable cross-platform than
         // onAmplitudeChanged which can be silent on some Windows configurations.
         _amplitudeTimer?.cancel();
