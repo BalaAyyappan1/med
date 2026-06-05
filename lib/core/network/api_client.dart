@@ -3,14 +3,13 @@ import 'package:dio/dio.dart';
 import 'dart:io' show Platform;
 
 class ApiClient {
-  static const String computerIp = '192.168.1.5'; 
+  static const String computerIp = '192.168.246.74'; 
 
   late final Dio _dio;
 
   ApiClient() {
     String baseUrl = 'http://localhost:3000/api';
     
-    // Dynamic override for Android
     if (!kIsWeb) {
       try {
         if (Platform.isAndroid) {
