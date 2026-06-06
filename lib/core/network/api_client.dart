@@ -16,7 +16,6 @@ class ApiClient {
           baseUrl = 'http://$computerIp:3000/api';
         }
       } catch (e) {
-        // Fallback in case platform check fails
         debugPrint('Platform detection error, using default: $e');
       }
     }
@@ -32,7 +31,6 @@ class ApiClient {
       ),
     );
 
-    // Setup logging interceptor for debugging network calls
     _dio.interceptors.add(
       LogInterceptor(
         requestBody: true,
