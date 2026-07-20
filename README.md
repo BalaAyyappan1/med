@@ -50,9 +50,3 @@ This MVP is focused on:
 npm run dev
 ```
 
-### Production
-
-```bash
-npm run build
-npm start
-```
